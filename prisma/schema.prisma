@@ -1,0 +1,85 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// An extraction job = one document batch (1..n pages) with instructions and results
+model Job {
+  id           String   @id @default(cuid())
+  title        String
+  mode         String   @default("general") // "general" | "cashier"
+  status       String   @default("draft") // draft | quality-review | extracting | review | exported
+  instructions String   @default("")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  pages        Page[]
+  fields       Field[]
+  exports      ExportRecord[]
+}
+
+// One document image (photo, scan, screenshot, or a PDF page rendered client-side)
+model Page {
+  id           String   @id @default(cuid())
+  jobId        String
+  job          Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  order        Int
+  fileName     String
+  mimeType     String   @default("image/jpeg")
+  width        Int
+  height       Int
+  originalData Bytes
+  enhancedData Bytes?
+  qualityJson  String   @default("{}") // ImageQuality assessment JSON
+  annotations  String   @default("[]") // Annotation[] JSON (normalized coords)
+  status       String   @default("uploaded") // uploaded | extracted | failed | blocked
+  extraction   String? // Raw structured extraction JSON for this page
+  errorMessage String?
+  createdAt    DateTime @default(now())
+}
+
+// One extracted cell value, traced back to its page + row
+model Field {
+  id           String   @id @default(cuid())
+  jobId        String
+  job          Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  pageIndex    Int
+  rowIndex     Int
+  columnName   String
+  value        String   @default("")
+  confidence   Float    @default(0)
+  uncertain    Boolean  @default(false)
+  missing      Boolean  @default(false)
+  alternatives String   @default("[]") // JSON string[]
+  bbox         String? // JSON [x, y, w, h] normalized
+  reason       String? // why flagged / unreadable
+  edited       Boolean  @default(false)
+  duplicate    Boolean  @default(false)
+}
+
+// Generated export files stored in DB for download
+model ExportRecord {
+  id        String   @id @default(cuid())
+  jobId     String
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  format    String // xlsx | csv | pdf | docx | txt | json
+  fileName  String
+  rows      Int      @default(0)
+  data      Bytes
+  createdAt DateTime @default(now())
+}
+
+// Saved output templates: uploaded xlsx templates or custom column definitions
+model Template {
+  id          String   @id @default(cuid())
+  name        String
+  type        String // "xlsx" | "columns"
+  fileName    String?
+  columnsJson String? // JSON string[] custom column definitions
+  headersJson String? // JSON string[] headers detected from uploaded xlsx
+  fileData    Bytes?
+  createdAt   DateTime @default(now())
+}
