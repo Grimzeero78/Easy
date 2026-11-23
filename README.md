@@ -20,6 +20,7 @@ DocuExtract is not an OCR demo — it is a production-oriented document understa
 | Cashier & financial mode | Specialized prompt for receipts/transactions: Transaction ID, Amount, Date, Payment Reference, Description, Customer Name — amounts and IDs transcribed exactly |
 | Confidence-based verification | Every cell carries a confidence score; uncertain/missing/low-confidence cells are flagged and editable in the workspace, with alternatives for ambiguous characters (O vs 0, 5 vs S) |
 | Data integrity engine | Missing values stay missing (never guessed) · duplicate record detection across pages · visible-vs-extracted record count mismatch detection · per-page processing report |
+| Money totals engine | Monetary columns are auto-detected (column name AND value format: KSh, KES, TZS, UGX, USD, EUR, $, €, 1,234.56, 1500/= …) and summed. Every total is reported by **column number and column name**, with amounts-summed/missing/skipped counts, duplicate-row effects, per-column and grand totals; a bold **TOTAL** row is appended to Excel (real numeric cells), CSV, PDF, Word and TXT exports, and the full `moneyTotals` object is included in JSON |
 | Export | `.xlsx` (including filling uploaded Excel templates), `.csv`, `.pdf`, `.docx`, `.txt`, `.json` — with the processing report included |
 | Multi-page batches | Page order preserved, consolidated dataset across pages, user-controlled deletion of any job/page/export |
 

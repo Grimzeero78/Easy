@@ -576,6 +576,7 @@ app.post('/api/jobs/:id/export', async (c) => {
     columns,
     records,
     reportSummary: report.summary,
+    moneyTotals: report.moneyTotals,
   }
 
   try {

@@ -84,6 +84,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     columns,
     records,
     reportSummary: report.summary,
+    moneyTotals: report.moneyTotals,
   }
 
   try {

@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import type { FieldView } from '@/lib/types'
+import { computeMoneyTotals, type MoneyRecord } from '@/lib/money'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -107,6 +108,22 @@ export function DataTable({ fields, onLocate, onChanged }: Props) {
     const withBox = rec.fields.find((f) => f.bbox)
     onLocate(withBox?.id ?? rec.fields[0]?.id ?? null)
   }
+
+  // Live money totals over the verified data — recomputed on every edit so
+  // the TOTAL row always reflects what the user currently sees.
+  const moneyTotals = useMemo(() => {
+    const moneyRecords: MoneyRecord[] = records.map((r) => ({
+      values: Object.fromEntries(columns.map((c) => [c, r.fields.find((f) => f.columnName === c)?.value ?? null])),
+      duplicate: r.duplicate,
+    }))
+    const result = computeMoneyTotals(columns, moneyRecords)
+    return result.columns.length > 0 ? result : null
+  }, [records, columns])
+  const totalsByColumn = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const t of moneyTotals?.columns ?? []) m.set(t.columnName, t.formatted)
+    return m
+  }, [moneyTotals])
 
   if (!fields.length) {
     return (
@@ -245,7 +262,37 @@ export function DataTable({ fields, onLocate, onChanged }: Props) {
             )
           })}
         </tbody>
+        {moneyTotals && (
+          <tfoot className="sticky bottom-0 z-10 bg-zinc-50 dark:bg-zinc-900 border-t-2 border-teal-600 dark:border-teal-500 shadow-[0_-1px_0_0_#e4e4e7]">
+            <tr>
+              <td className="px-2 py-2 text-xs font-bold text-teal-700 dark:text-teal-400 whitespace-nowrap">TOTAL</td>
+              {columns.map((c) => (
+                <td key={c} className="px-3 py-2 text-right text-sm font-bold tabular-nums text-teal-700 dark:text-teal-400 whitespace-nowrap">
+                  {totalsByColumn.get(c) ?? ''}
+                </td>
+              ))}
+              <td />
+            </tr>
+            {moneyTotals.grandTotal != null && moneyTotals.formattedGrandTotal && (
+              <tr>
+                <td colSpan={columns.length + 2} className="px-2 pb-2 text-[11px] font-semibold text-teal-600 dark:text-teal-400 text-right">
+                  GRAND TOTAL: {moneyTotals.formattedGrandTotal}
+                  {moneyTotals.columns.length > 1 && ` (Column ${moneyTotals.columns.map((c) => c.columnIndex).join(' + ')} combined)`}
+                </td>
+              </tr>
+            )}
+          </tfoot>
+        )}
       </table>
+      {moneyTotals?.warnings.length ? (
+        <div className="px-3 py-2.5 border-t border-zinc-200 dark:border-zinc-800 bg-amber-50 dark:bg-amber-950/30 text-[11px] text-amber-700 dark:text-amber-400 flex flex-wrap gap-x-4 gap-y-1">
+          <span className="inline-flex items-center gap-1">
+            <AlertTriangle className="h-3 w-3 shrink-0" />
+            {moneyTotals.warnings[0]}
+          </span>
+          {moneyTotals.warnings.length > 1 && <span className="text-amber-500">+{moneyTotals.warnings.length - 1} more note(s) in the processing report</span>}
+        </div>
+      ) : null}
       {(records.some((r) => r.duplicate) || records.some((r) => r.fields.some((f) => f && (f.uncertain || f.missing) && !f.edited))) && (
         <div className="px-3 py-2.5 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 text-[11px] text-zinc-500 dark:text-zinc-400 flex flex-wrap gap-x-4 gap-y-1">
           <span className="inline-flex items-center gap-1">

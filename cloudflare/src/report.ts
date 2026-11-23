@@ -1,4 +1,5 @@
 import type { FieldView, JobReport, PageRecord } from './types'
+import { computeMoneyTotals, type MoneyRecord } from './money'
 
 /**
  * Verification engine — accuracy and data integrity checks over extracted
@@ -105,6 +106,22 @@ export function computeReport(pages: PageRecord[], fields: FieldView[]): JobRepo
   })
 
   const uniqueRows = byRecord.size - duplicateRowIndexes.length
+
+  // Money totals — detect monetary columns and sum every amount. Totals are
+  // reported per column NUMBER and NAME; missing / unreadable values and
+  // duplicate-row effects are surfaced in warnings, never silently dropped.
+  const dupKeys = new Set(duplicateRowIndexes.map((d) => `${d.pageIndex}:${d.rowIndex}`))
+  const moneyRecords: MoneyRecord[] = [...byRecord.entries()].map(([k, arr]) => {
+    const values: Record<string, string | null> = {}
+    for (const c of columns) {
+      const f = arr.find((x) => x.columnName === c)
+      values[c] = f ? f.value : null
+    }
+    return { values, duplicate: dupKeys.has(k) }
+  })
+  const moneyResult = computeMoneyTotals(columns, moneyRecords)
+  const moneyTotals = moneyResult.columns.length > 0 ? moneyResult : null
+
   const summary: string[] = []
   if (flaggedFields > 0) summary.push(`${flaggedFields} field(s) are flagged as uncertain or low-confidence and need human review.`)
   if (missingFields > 0) summary.push(`${missingFields} field(s) are missing/unreadable — they were left empty, never guessed.`)
@@ -116,9 +133,25 @@ export function computeReport(pages: PageRecord[], fields: FieldView[]): JobRepo
         `Page ${pg.pageIndex + 1}: ${pg.rows} record(s) extracted but ${pg.visibleRecordCount} visible in the document — some records may have been missed.`
       )
   }
+  if (moneyTotals) {
+    for (const c of moneyTotals.columns)
+      summary.push(
+        `Money total — Column ${c.columnIndex} "${c.columnName}": ${c.formatted} across ${c.countedValues} record(s).`
+      )
+    if (moneyTotals.grandTotal != null && moneyTotals.formattedGrandTotal)
+      summary.push(
+        `GRAND TOTAL: ${moneyTotals.formattedGrandTotal} across ${moneyTotals.columns.length} money column(s).`
+      )
+  }
+  summary.push(...moneyResult.warnings)
   if (!summary.length) summary.push('All checks passed: no flagged fields, no missing values, no duplicates, record counts match.')
 
-  const needsReview = flaggedFields > 0 || missingFields > 0 || duplicateRowIndexes.length > 0 || pagesReport.some((p) => p.countMismatch)
+  const needsReview =
+    flaggedFields > 0 ||
+    missingFields > 0 ||
+    duplicateRowIndexes.length > 0 ||
+    pagesReport.some((p) => p.countMismatch) ||
+    moneyResult.warnings.some((w) => !w.startsWith('No monetary column'))
 
   return {
     totalFields: fields.length,
@@ -134,5 +167,6 @@ export function computeReport(pages: PageRecord[], fields: FieldView[]): JobRepo
     pages: pagesReport,
     needsReview,
     summary,
+    moneyTotals,
   }
 }

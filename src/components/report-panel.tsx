@@ -4,7 +4,7 @@ import type { JobReport } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
-import { CircleCheck, AlertTriangle, FileWarning, Copy, Pencil, ScanSearch } from 'lucide-react'
+import { CircleCheck, AlertTriangle, FileWarning, Copy, Pencil, ScanSearch, Coins } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export function ReportPanel({ report }: { report: JobReport }) {
@@ -47,6 +47,78 @@ export function ReportPanel({ report }: { report: JobReport }) {
           </div>
         </CardContent>
       </Card>
+
+      {report.moneyTotals && report.moneyTotals.columns.length > 0 && (
+        <Card className="border-teal-200 dark:border-teal-900">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Coins className="h-4 w-4 text-teal-600" aria-hidden /> Money totals — summed by column number &amp; name
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <table className="w-full text-sm" aria-label="Money totals per column">
+              <thead>
+                <tr className="border-b border-zinc-200 dark:border-zinc-800 text-left text-xs text-zinc-500 dark:text-zinc-400">
+                  <th className="py-2 pr-3 font-medium">Column #</th>
+                  <th className="py-2 pr-3 font-medium">Column name</th>
+                  <th className="py-2 pr-3 font-medium text-right">Amounts summed</th>
+                  <th className="py-2 pr-3 font-medium text-right">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.moneyTotals.columns.map((c) => (
+                  <tr key={c.columnIndex} className="border-b border-zinc-100 dark:border-zinc-800/60 last:border-0">
+                    <td className="py-2 pr-3">
+                      <Badge variant="outline" className="bg-teal-50 text-teal-700 border-teal-200 text-[10px] dark:bg-teal-950 dark:text-teal-300 dark:border-teal-800">
+                        Column {c.columnIndex}
+                      </Badge>
+                    </td>
+                    <td className="py-2 pr-3 font-medium">{c.columnName}</td>
+                    <td className="py-2 pr-3 text-right tabular-nums text-zinc-500 dark:text-zinc-400">
+                      {c.countedValues}
+                      {c.missingValues > 0 && <span className="text-red-500"> · {c.missingValues} missing</span>}
+                      {c.skippedValues > 0 && <span className="text-amber-600 dark:text-amber-400"> · {c.skippedValues} skipped</span>}
+                    </td>
+                    <td className="py-2 pr-3 text-right tabular-nums font-semibold">
+                      {c.formatted}
+                      {c.duplicateValuesCounted > 0 && (
+                        <span className="block text-[10px] font-normal text-zinc-400" title="Sum excluding duplicate rows">
+                          {c.formattedUnique} excl. duplicates
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              {report.moneyTotals.grandTotal != null && report.moneyTotals.formattedGrandTotal && (
+                <tfoot>
+                  <tr className="border-t-2 border-teal-600 dark:border-teal-500">
+                    <td className="py-2.5 pr-3 font-bold text-teal-700 dark:text-teal-400" colSpan={3}>
+                      GRAND TOTAL ({report.moneyTotals.columns.map((c) => `Column ${c.columnIndex}`).join(' + ')})
+                    </td>
+                    <td className="py-2.5 pr-3 text-right tabular-nums font-bold text-teal-700 dark:text-teal-400 text-base">
+                      {report.moneyTotals.formattedGrandTotal}
+                    </td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+
+            {report.moneyTotals.warnings.length > 0 && (
+              <ul className="space-y-1">
+                {report.moneyTotals.warnings.map((w, i) => (
+                  <li key={i} className="text-xs text-amber-700 dark:text-amber-400 flex items-start gap-1.5">
+                    <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" aria-hidden /> {w}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="text-[11px] text-zinc-400">
+              Totals are computed automatically over the verified data — the same TOTAL row is added to Excel, CSV, PDF, Word and TXT exports. Amounts that did not read as money are excluded and listed above, never guessed.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       <Card className="border-zinc-200 dark:border-zinc-800">
         <CardHeader className="pb-3">

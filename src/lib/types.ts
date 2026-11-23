@@ -93,6 +93,40 @@ export interface JobReport {
   pages: PageReport[]
   needsReview: boolean
   summary: string[]
+  /** Auto-detected monetary columns with summed totals (null when no money found). */
+  moneyTotals: MoneyTotals | null
+}
+
+/** Total for one monetary column, referenced by number AND name. */
+export interface ColumnMoneyTotal {
+  /** 1-based column number — same numbering as the export header row. */
+  columnIndex: number
+  columnName: string
+  /** Sum over every extracted record (duplicates included). */
+  total: number
+  /** Sum excluding duplicate-flagged rows. */
+  uniqueTotal: number
+  /** Mean amount over counted values. */
+  average: number
+  /** Dominant currency code detected in the values (e.g. "KES"), else null. */
+  currency: string | null
+  countedValues: number
+  missingValues: number
+  skippedValues: number
+  skippedSamples: string[]
+  duplicateValuesCounted: number
+  uniqueValuesCounted: number
+  formatted: string
+  formattedUnique: string
+}
+
+export interface MoneyTotals {
+  columns: ColumnMoneyTotal[]
+  /** Grand total across money columns — only when one currency is shared. */
+  grandTotal: number | null
+  formattedGrandTotal: string | null
+  /** Non-silent notes: skipped values, mixed currencies, duplicate effects. */
+  warnings: string[]
 }
 
 export interface JobDetail {

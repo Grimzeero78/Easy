@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx'
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
+import type { MoneyTotals, ColumnMoneyTotal } from './types'
 import {
   Document,
   Packer,
@@ -33,7 +34,28 @@ export interface ExportInput {
   columns: string[]
   records: ExportRecordRow[]
   reportSummary: string[]
+  /** Auto-detected money totals — renders a TOTAL row under each money column. */
+  moneyTotals?: MoneyTotals | null
 }
+
+/** Money totals keyed by column name (stable across column selection/reorder). */
+function totalsByName(input: ExportInput): Map<string, ColumnMoneyTotal> {
+  const m = new Map<string, ColumnMoneyTotal>()
+  for (const t of input.moneyTotals?.columns ?? []) m.set(t.columnName, t)
+  return m
+}
+
+function totalValue(input: ExportInput, col: string): number | null {
+  const t = totalsByName(input).get(col)
+  return t ? t.total : null
+}
+
+function totalDisplay(input: ExportInput, col: string): string | null {
+  const t = totalsByName(input).get(col)
+  return t ? t.formatted : null
+}
+
+const TOTAL_LABEL = 'TOTAL'
 
 const TEAL = rgb(0.059, 0.463, 0.431) // #0F766E
 const ZEBRA = rgb(0.953, 0.957, 0.965) // #F3F4F6
@@ -104,6 +126,18 @@ export function buildXlsx(input: ExportInput, templateBytes?: ArrayBuffer | null
         }
         return row
       })
+      // TOTAL row under the data (money columns only)
+      if (input.moneyTotals?.columns.length) {
+        const totalRow: unknown[] = new Array(width).fill('')
+        const firstCol = Math.min(...colToTemplateCol.values())
+        totalRow[firstCol] = TOTAL_LABEL
+        for (const [colName, targetCol] of colToTemplateCol) {
+          const tv = totalValue(input, colName)
+          if (tv == null) continue
+          totalRow[targetCol] = tv
+        }
+        rowsAoa.push(totalRow)
+      }
       // header labels for appended columns
       const headerRowAoa: unknown[] = new Array(width).fill(null)
       for (const c of extraColumns) headerRowAoa[colToTemplateCol.get(c)!] = c
@@ -138,6 +172,15 @@ function freshAoa(input: ExportInput): unknown[][] {
   for (const rec of input.records) {
     rows.push(input.columns.map((c) => numLike(cellText(rec.values[c])) ?? cellText(rec.values[c])))
   }
+  if (input.moneyTotals?.columns.length) {
+    rows.push(
+      input.columns.map((c, i) => {
+        if (i === 0) return TOTAL_LABEL
+        const tv = totalValue(input, c)
+        return tv == null ? '' : tv
+      })
+    )
+  }
   return rows
 }
 
@@ -155,6 +198,18 @@ export function buildCsv(input: ExportInput): string {
   const esc = (s: string) => (/[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s)
   const lines = [input.columns.map(esc).join(',')]
   for (const rec of input.records) lines.push(input.columns.map((c) => esc(cellText(rec.values[c]))).join(','))
+  if (input.moneyTotals?.columns.length) {
+    lines.push(
+      input.columns
+        .map((c, i) => {
+          if (i === 0) return TOTAL_LABEL
+          const tv = totalValue(input, c)
+          return tv == null ? '' : tv.toFixed(2)
+        })
+        .map(esc)
+        .join(',')
+    )
+  }
   return lines.join('\r\n') + '\r\n'
 }
 
@@ -171,6 +226,19 @@ export function buildTxt(input: ExportInput): string {
     out += input.columns.map((c, i) => cellText(rec.values[c]).slice(0, widths[i]).padEnd(widths[i])).join('|') + '\n'
   }
   out += sep
+  if (input.moneyTotals?.columns.length) {
+    out +=
+      input.columns
+        .map((c, i) => {
+          if (i === 0) return TOTAL_LABEL.padEnd(widths[i])
+          const tv = totalValue(input, c)
+          if (tv == null) return ''.padEnd(widths[i])
+          const disp = totalDisplay(input, c) ?? tv.toFixed(2)
+          return disp.slice(0, widths[i]).padStart(widths[i] - 1) + ' '
+        })
+        .join('|') + '\n'
+    out += sep
+  }
   return out
 }
 
@@ -189,6 +257,7 @@ export function buildJson(
       fields: Object.fromEntries(input.columns.map((c) => [c, cellText(r.values[c])])),
     })),
     processingSummary: input.reportSummary,
+    moneyTotals: input.moneyTotals ?? null,
     ...extra,
   }
   return JSON.stringify(payload, null, 2)
@@ -332,6 +401,29 @@ export async function buildPdf(input: ExportInput): Promise<Uint8Array> {
     })
   })
 
+  // TOTAL row (bold, money columns only)
+  if (input.moneyTotals?.columns.length) {
+    const rowH = 20
+    if (y - rowH < margin) {
+      page = doc.addPage([landscape ? 842 : 595, pageH])
+      y = pageH - margin
+      drawHeader()
+    }
+    page.drawRectangle({ x: margin, y: y - rowH + 3, width: pageW, height: rowH, color: rgb(0.902, 0.961, 0.949) })
+    input.columns.forEach((c, i) => {
+      const txt = i === 0 ? TOTAL_LABEL : totalDisplay(input, c) ?? ''
+      if (!txt) return
+      page.drawText(sanitizePdfText(txt).slice(0, 60), {
+        x: margin + colW.slice(0, i).reduce((a, b) => a + b, 0) + 3,
+        y: y - 9,
+        size: 8.5,
+        font: bold,
+        color: TEAL,
+      })
+    })
+    y -= rowH
+  }
+
   return await doc.save()
 }
 
@@ -365,6 +457,32 @@ export async function buildDocx(input: ExportInput): Promise<Uint8Array> {
         ),
       })
   )
+
+  // TOTAL row (bold, money columns only)
+  if (input.moneyTotals?.columns.length) {
+    rows.push(
+      new TableRow({
+        children: input.columns.map(
+          (c, i) =>
+            new TableCell({
+              shading: { type: ShadingType.CLEAR, fill: 'E6F5F2' },
+              borders: { top: border, bottom: border, left: border, right: border },
+              children: [
+                new Paragraph({
+                  children: [
+                    new TextRun({
+                      text: i === 0 ? TOTAL_LABEL : totalDisplay(input, c) ?? '—',
+                      bold: true,
+                      color: '0F766E',
+                    }),
+                  ],
+                }),
+              ],
+            })
+        ),
+      })
+    )
+  }
 
   const doc = new Document({
     creator: 'DocuExtract AI',
