@@ -4,7 +4,7 @@
  *       verify report.moneyTotals -> export csv/xlsx -> check TOTAL row.
  * Run: bun scripts/test-money-e2e.ts
  */
-const BASE = 'http://localhost:3000'
+const BASE = process.env.MONEY_E2E_BASE || 'http://localhost:3000'
 
 async function api(path: string, init?: RequestInit) {
   const res = await fetch(BASE + path, init)
